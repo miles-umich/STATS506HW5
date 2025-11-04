@@ -1,0 +1,232 @@
+---
+title: "HW5"
+format: html
+editor: visual
+---
+
+## Stats 506 Homework #5
+
+Margaret Miles
+
+## Problem #1: **OOP Programming**
+
+Create a class to represent Wald-style normal approximation Confidence Intervals. Do this using S4.
+
+a.  For the `waldCI` class, define the following:
+
+    a.  A constructor, which takes in either a mean and standard deviation, or a lower and upper bound along with a confidence level. This should be a custom constructor, not `new()` or `waldCI()`.
+
+    b.  A validator.
+
+    c.  A `show` method, which takes as arguments `level` and `digits`.
+
+    d.  Accessors: `lb`, `ub`, `mean`, `sterr`. `lb` and `ub` should take in `level`.
+
+    e.  Setters: `lb`, `ub`, `mean`, `sterr`. Be sure to validate the resulting `waldCI`. `lb` and `ub` should take in a `level`.
+
+    f.  A `contains` method, returning a logical of whether a value is within a CI of a certain `level`.
+
+    g.  An `overlap` method, that takes in two `waldCI`’s and a `level`, and returns a logical of whether the two confidence intervals overlap.
+
+    h.  `as.numeric` to return `c(lb, ub)` for a given `level`.
+
+    i.  `transform` which takes in a *monotonic* `function` and a `waldCI`, and returns the transformed confidence interval.
+
+All `level` arguments should have a reasonable default value. `digits` as well.
+
+```{r}
+# create waldCI class using S4
+setClass("waldCI",
+         slot = c(
+           mean = "numeric",
+           sd = "numeric",
+           lowerCI = "numeric",
+           upperCI = "numeric",
+           level = "numeric"
+         ))
+
+# make a constructor 
+makeWaldCI <- function(mean = NULL, sd = NULL, 
+                       lowerCI = NULL, upperCI = NULL, level = 0.95){
+  # for just mean and sd
+  if (!is.null(mean) && !is.null(sd)) {
+    # make Wald CI
+  }
+  # for CIs and level
+  if (!is.null(lowerCI) && !is.null(upperCI)){
+    # made Wald CI
+    
+  } else {
+    stop("Provide either (mean, sd) or (lowerCI, upperCI) and level.")
+  }
+  
+  # Return the S4 object
+  new("waldCI",
+      mean = mean,
+      sd = sd,
+      lowerCI = lowerCI,
+      upperCI = upperCI,
+      level = level)
+}
+
+# validator!!!
+setValidity("waldCI",  function(object) {
+  # need either mean/sd or CIs and level
+  
+  # all null
+  if()
+  
+  # if mean and sd are null, but so is one of the CIs or level
+  if (is.null(mean) && is.null(sd) && 
+      (is.null(lowerCI) | is.null(lowerCI) | is.null(level))) {
+    stop("Missing either lowerCI, upperCI, or level")
+  }
+  
+  # if CIs are null but so is mean or sd
+  if (is.null(lowerCI) && is.null(lowerCI) && (is.null(mean) | is.null(sd))) {
+    stop("Missing either mean or sd.")
+  }
+  
+  return(TRUE)
+})
+
+```
+
+b\. Use your `waldCI` class to create three objects:
+
+-   `ci1`: , 95%
+
+-   `ci2`: mean: 13, standard error: 2.5
+
+-   `ci3`: , 75%
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+c\. Evaluate the following code:
+
+```         
+ci1
+ci2
+ci3
+as.numeric(ci1)
+as.numeric(ci2, .8)
+as.numeric(ci3)
+show(ci1, .9)
+show(ci2, .8)
+show(ci3, .75)
+lb(ci2)
+ub(ci2, .99)
+mean(ci1)
+sterr(ci3)
+lb(ci2) <- 10.5
+lb(ci2, .9) <- 10
+mean(ci3) <- 34
+contains(ci1, 17)
+contains(ci2, 11, .9)
+contains(ci3, 44)
+overlap(ci1, ci2)
+overlap(ci1, ci2, .99)
+eci1 <- transform(ci1, exp)
+eci1
+show(eci1, .75)
+mean(transform(ci2, sqrt))
+```
+
+```{r}
+
+```
+
+c\. Show that your validator does not allow the creation of invalid confidence intervals:
+
+-   negative standard error
+
+-   lb \> ub
+
+-   Infinite bounds
+
+-   invalid use of the setters
+
+Note that there are a lot of choices to be made here. What are you going to store in the class? How are you going to store them (what object types)? How are you going to enforce the function in `transform` being monotonic?
+
+There is no right answer to those questions. Make the best decision you can, and don’t be afraid to change it if your decision causes unforeseen difficulties.
+
+You may not use any existing R functions or packages that would trivialize this assignment. (E.g. if you found an existing package that does this, or found a function that checks for overlap between two CIs, that is not able to be used.)
+
+Hint: It may be useful to define other functions that I don’t explicitly ask for.
+
+```{r}
+
+```
+
+## Problem #2: **data.table**
+
+Repeat problem set 4, question 2, using data.table.
+
+You can make the same or different decision as you did last time. You can also use or ignore the decisions I made in the solutions. As before, there is no “correct” answer (including those in the problem set 4 solutions).
+
+Use the tidyverse for this problem. In particular, use piping and dplyr as much as you are able. Note: Use of any deprecated functions will result in a point loss.
+
+Use the “ATP Matches” data from 2019 available at https://raw.githubusercontent.com/JeffSackmann/tennis_atp/refs/heads/master/atp_matches_2019.csv. This data tracks all Tennis matches. This data does not have documentation, so you’ll have to explore the data yourself to figure out it’s structure. Use it to answer the following questions. Your answers should show both the output from R that allows you to answer it, as well as a written answer.
+
+a. How many tournaments took place in 2019?
+
+```{r}
+
+```
+
+b. Did any player win more than one tournament? If so, how many players won more than one tournament, and how many tournaments did the most winning player(s) win?
+
+```{r}
+
+```
+
+c. Is there any evidence that winners have more aces than losers? (If you address this with a hypothesis test, do not use base R functionality - continue to remain in the Tidyverse.)
+
+```{r}
+
+```
+
+d. Identify the player(s) with the highest win-rate. (Note that this is NOT asking for the highest number of wins.) Restrict to players with at least 5 matches.
+
+```{r}
+
+```
+
+## Problem #3: **plotly**
+
+Repeat problem set 4, question 3 using plotly.
+
+There is no expectation that you produce the exact same plots as last time. You may of course use your plots as last time, or the ones from the problem set 4 solutions, as inspiration for these plots.
+
+These will be graded similar to last time:
+
+Is the type of graph & choice of variables appropriate to answer the question?
+Is the graph clear and easy to interpret?
+Is the graph publication ready?
+
+Note: This is, intentionally, a very open-ended question. There is no “right” answer. The goal is for you to explore your plotting options, and settle on something reasonable. You can use base R, ggplot, or something else. You’ll likely have to look online for resources on plotting beyond what we covered in class.
+
+Use the NYTimes Covid data (https://raw.githubusercontent.com/nytimes/covid-19-data/refs/heads/master/rolling-averages/us-states.csv). This lists daily Covid new cases. For each of the following, produce a publication-ready plot which addresses the question. Use your plot to support an argument for your question.
+
+a. How many major and minor spikes in cases were there?
+
+```{r}
+
+```
+
+b. For the states with the highest and lowest overall rates per population, what differences do you see in their trajectories over time?
+
+```{r}
+
+```
+
+c. Identify, to the best of your ability without a formal test, the first five states to experience Covid in a substantial way.
+
+```{r}
+
+```
+
+
