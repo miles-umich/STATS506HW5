@@ -20,9 +20,9 @@ a.  For the `waldCI` class, define the following:
 
     c.  A `show` method, which takes as arguments `level` and `digits`.
 
-    d.  Accessors: `lb`, `ub`, `mean`, `sterr`. `lb` and `ub` should take in `level`.
+    d.  Accessors: `lb`, `ub`, `mean`, `sterr`. 
 
-    e.  Setters: `lb`, `ub`, `mean`, `sterr`. Be sure to validate the resulting `waldCI`. `lb` and `ub` should take in a `level`.
+    e.  Setters: `lb`, `ub`, `mean`, `sterr`. Be sure to validate the resulting `waldCI`. 
 
     f.  A `contains` method, returning a logical of whether a value is within a CI of a certain `level`.
 
@@ -35,74 +35,323 @@ a.  For the `waldCI` class, define the following:
 All `level` arguments should have a reasonable default value. `digits` as well.
 
 ```{r}
-# create waldCI class using S4
+##' @title create waldCI class using S4
 setClass("waldCI",
          slot = c(
            mean = "numeric",
-           sd = "numeric",
+           sterr = "numeric",
            lowerCI = "numeric",
            upperCI = "numeric",
            level = "numeric"
          ))
 
-# make a constructor 
-makeWaldCI <- function(mean = NULL, sd = NULL, 
+##' @title make a constructor 
+##' @param mean Numeric
+##' @param sterr Numeric
+##' @param lowerCI numeric
+##' @param upperCI numeric
+##' @param level numeric
+##' @return new `waldCI` object
+makeWaldCI <- function(mean = NULL, sterr = NULL, 
                        lowerCI = NULL, upperCI = NULL, level = 0.95){
-  # for just mean and sd
-  if (!is.null(mean) && !is.null(sd)) {
+  # for just mean and sterr
+  if (!is.null(mean) && !is.null(sterr)) {
     # make Wald CI
-  }
-  # for CIs and level
-  if (!is.null(lowerCI) && !is.null(upperCI)){
+    alpha <- 1 - level
+    z <- qnorm(1 - alpha / 2)
+    lowerCI <- mean - z * sterr
+    upperCI <- mean + z * sterr
+  } else if (!is.null(lowerCI) && !is.null(upperCI)) {
+    # for CIs and level
     # made Wald CI
-    
+    mean <- (lowerCI + upperCI) / 2
+    alpha <- 1 - level
+    z <- qnorm(1 - alpha / 2)
+    sterr <- (upperCI - mean) / z
   } else {
-    stop("Provide either (mean, sd) or (lowerCI, upperCI) and level.")
+    stop("Provide either (mean, sterr) or (lowerCI, upperCI) and level.")
   }
   
   # Return the S4 object
   new("waldCI",
       mean = mean,
-      sd = sd,
+      sterr = sterr,
       lowerCI = lowerCI,
       upperCI = upperCI,
       level = level)
 }
 
 # validator!!!
+##' @title create validator for WaldCI object
+##' @param waldCI class object
 setValidity("waldCI",  function(object) {
-  # need either mean/sd or CIs and level
+  # non-numeric
+  if((!is.numeric(object@mean) || is.null(object@mean)) ||
+     (!is.numeric(object@sterr) || is.null(object@sterr)) ||
+     (!is.numeric(object@lowerCI) || is.null(object@lowerCI)) ||
+     (!is.numeric(object@upperCI) || is.null(object@upperCI))){
+    stop("A value is non-numeric, please enter only numeric values.")
+  }
   
   # all null
-  if()
+  if(is.null(object@mean) && is.null(object@sterr) && is.null(object@lowerCI) && is.null(object@upperCI)){
+    stop("Missing all values, please enter values for CIs or Mean and sterr")
+  }
   
-  # if mean and sd are null, but so is one of the CIs or level
-  if (is.null(mean) && is.null(sd) && 
-      (is.null(lowerCI) | is.null(lowerCI) | is.null(level))) {
+  # if mean and sterr are null, but so is one of the CIs or level
+  if (is.null(object@mean) && is.null(object@sterr) && 
+      (is.null(object@lowerCI) || is.null(object@lowerCI) || is.null(object@level))) {
     stop("Missing either lowerCI, upperCI, or level")
   }
   
-  # if CIs are null but so is mean or sd
-  if (is.null(lowerCI) && is.null(lowerCI) && (is.null(mean) | is.null(sd))) {
-    stop("Missing either mean or sd.")
+  # if CIs are null but so is mean or sterr
+  if (is.null(object@lowerCI) && is.null(object@lowerCI) && (is.null(object@mean) || is.null(object@sterr))) {
+    stop("Missing either mean or sterr.")
   }
   
+  # if level is not between 0 and 1
+  if(object@level > 1 || object@level < 0){
+    stop("Level must be inbetween 0 and 1")
+  }
+  
+  # lower bound and upper bound error
+  if (object@lowerCI >= object@upperCI)
+      return("Lower bound must be less than upper bound.")
+  
   return(TRUE)
+  
 })
+  
+# A `show` method, which takes as arguments `level` and `digits`
+##' @title a show method for a `waldCI` object
+##' @param object a `waldCI` object
+setMethod("show", "waldCI",
+          function(object){
+            digits = 3
+            cat("Wald-style Confidence Interval\n")
+            cat("Level: ")
+            cat(object@level)
+            cat("\nMean: ", round(object@mean, digits))
+            cat("\nStandard Error: ", round(object@sterr,digits))
+            cat("\nLower Bound: ", round(object@lowerCI, digits))
+            cat("\nUpper Bound: ", round(object@upperCI, digits))
+            cat("\n\n")
+            return(invisible(object))
+          })
+
+# Accessors
+# `lb`, `ub`, `mean`, `sterr`. `lb` and `ub` should take in `level`.
+
+setGeneric("lb", function(object){
+  standardGeneric("lowerCI")
+})
+##' @title Return the lower bound of a `waldCI`
+##' @param object A `waldCI` object
+##' @return It's lower bound
+setMethod("lb", "waldCI", function(object){
+  return(slot(object, "lowerCI"))
+})
+
+setGeneric("ub", function(object){
+  standardGeneric("upperCI")
+})
+##' @title Return the upper bound of a `waldCI`
+##' @param object A `waldCI` object
+##' @return It's upper bound
+setMethod("ub", "waldCI", function(object){
+  return(slot(object, "upperCI"))
+})
+
+setGeneric("mean", function(object){
+  standardGeneric("mean")
+})
+##' @title Return the mean of a `waldCI`
+##' @param object A `waldCI` object
+##' @return It's mean 
+setMethod("mean", "waldCI", function(object){
+  return(slot(object, "mean"))
+})
+
+setGeneric("sterr", function(object){
+  standardGeneric("sterr")
+})
+##' @title Return the standard error of a `waldCI` object
+##' @param object A `waldCI` object
+##' @return It's standard error
+setMethod("sterr", "waldCI", function(object){
+  return(slot(object, "sterr"))
+})
+
+# setters
+# Setters: `lb`, `ub`, `mean`, `sterr`. Be sure to validate the resulting `waldCI`. 
+
+setGeneric("lb<-",
+           function(object, value) {
+             standardGeneric("lb<-")
+           })
+
+##' @title Set the lower bound of a `waldCI`
+##' @param object A `waldCI` object
+##' @param value New lower bound
+##' @return The updated object
+setMethod("lb<-", "waldCI",
+  function(object, value) {
+    object@lowerCI <- value
+    validObject(object) # Re-run validity check
+    return(object)
+  }
+)
+
+setGeneric("ub<-",
+           function(object, value) {
+             standardGeneric("ub<-")
+           })
+
+##' @title Set the upper bound of a `waldCI`
+##' @param object A `waldCI` object
+##' @param value New upper bound
+##' @return The updated object
+setMethod("ub<-", "waldCI",
+  function(object, value) {
+    object@upperCI <- value
+    validObject(object) # Re-run validity check
+    return(object)
+  }
+)
+
+setGeneric("mean<-",
+           function(object, value) {
+             standardGeneric("mean<-")
+           })
+
+##' @title Set the mean of a `waldCI`
+##' @param object A `waldCI` object
+##' @param value mean
+##' @return The updated object
+setMethod("mean<-", "waldCI",
+  function(object, value) {
+    object@mean <- value
+    validObject(object) # Re-run validity check
+    return(object)
+  }
+)
+
+setGeneric("sterr<-",
+           function(object, value) {
+             standardGeneric("sterr<-")
+           })
+
+##' @title Set the standard error of a `waldCI`
+##' @param object A `waldCI` object
+##' @param value New standard error
+##' @return The updated object
+setMethod("sterr<-", "waldCI",
+  function(object, value) {
+    object@sterr <- value
+    validObject(object) # Re-run validity check
+    return(object)
+  }
+)
+
+# A contains method, returning a logical of whether a value is within a CI.
+setGeneric("containsValue", function(object, value) {
+  standardGeneric("containsValue")
+  })
+
+##' @title a contains method
+##' @param object A `waldCI` object
+##' @param value a value to test whether it is in a CI
+##' @return logical 
+setMethod("containsValue", "waldCI", function(object, value) {
+  value >= object@lowerCI && value <= object@upperCI
+})
+
+# An overlap method, that takes in two waldCI’s, and returns a logical of whether the two confidence intervals overlap.
+setGeneric("overlap", function(object1, object2) {
+  standardGeneric("overlap")
+  })
+
+##' @title a overlap method
+##' @param object1 A `waldCI` object
+##' @param object2 another `waldCI` object
+##' @return logical 
+setMethod("overlap", "waldCI", function(object1, object2) {
+  return(!(object1@upperCI < object2@lowerCI || object2@upperCI < object1@lowerCI))
+})
+
+
+# as.numeric to return c(lb, ub). (Hint: The second argument of setGeneric is not needed when an existing s3 function uses the .Primitive function.)
+
+# have to use x
+# asked chatGPT why
+
+##' @title an as.numeric to return the lower and upper bound of the object
+##' @param x A `waldCI` object
+##' @return c(lb, ub) of a `waldCI` object
+setMethod("as.numeric", "waldCI", function(x){
+  return(c(x@lowerCI, x@upperCI))
+  })
+
+# transformCI which takes in a function and a waldCI, and returns the transformed waldCI object. Warn the user that only monotonic functions make sense.
+setGeneric("transformCI", function(object, func) {
+  standardGeneric("transformCI")
+  })
+
+##' @title a transformCI which returns a transformed WaldCI object
+##' @param object A `waldCI` object
+##' @param func a function
+##' @return a transformed `waldCI` object
+setMethod("transformCI", "waldCI", function(object, func){
+  warning("Only monotonic functions are allowed and will make sense.")
+  translowerCI <- func(object@lowerCI)
+  transupperCI <- func(object@upperCI)
+  transmean <- func(object@mean)
+  transsterr <- abs(translowerCI - transupperCI) / qnorm(1 - (1 - object@level))
+  new1 <- new("waldCI",
+      mean = transmean,
+      sterr = transsterr,
+      lowerCI = translowerCI,
+      upperCI = transupperCI,
+      level = level)
+  validObject(new1) # Re-run validity check
+  return(new1)
+  })
 
 ```
 
 b\. Use your `waldCI` class to create three objects:
 
--   `ci1`: , 95%
+-   `ci1`: (17.2, 24.7), 95%
 
--   `ci2`: mean: 13, standard error: 2.5
+-   `ci2`: mean: 13, standard error: 2.5, 99%
 
 -   `ci3`: , 75%
 
 ```{r}
-#| echo: false
-2 * 2
+# construct from CIs and level
+ci1 <- makeWaldCI(lowerCI = 17.2, upperCI = 24.7, level = 0.95)
+
+# Construct from mean and SE
+ci2 <- makeWaldCI(mean = 13, sterr = 2.5, level = 0.99)
+
+# for new CI and level
+ci3 <- makeWaldCI(lowerCI = 27.43, upperCI = 39.22, level = 0.75)
+
+ci1
+ci2
+ci3
+
+as.numeric(ci1)
+as.numeric(ci2)
+as.numeric(ci3)
+
+lb(ci2)
+ub(ci2)
+mean(ci1)
+sterr(ci3)
+level(ci2)
+
+
 ```
 
 c\. Evaluate the following code:
