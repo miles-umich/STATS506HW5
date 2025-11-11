@@ -18,19 +18,19 @@ a.  For the `waldCI` class, define the following:
 
     b.  A validator.
 
-    c.  A `show` method, which takes as arguments `level` and `digits`.
+    c.  A show method.
 
     d.  Accessors: `lb`, `ub`, `mean`, `sterr`. 
 
     e.  Setters: `lb`, `ub`, `mean`, `sterr`. Be sure to validate the resulting `waldCI`. 
 
-    f.  A `contains` method, returning a logical of whether a value is within a CI of a certain `level`.
+    f.  A contains method, returning a logical of whether a value is within a CI.
 
-    g.  An `overlap` method, that takes in two `waldCI`’s and a `level`, and returns a logical of whether the two confidence intervals overlap.
+    g.  An overlap method, that takes in two waldCI’s, and returns a logical of whether the two confidence intervals overlap.
 
-    h.  `as.numeric` to return `c(lb, ub)` for a given `level`.
+    h.  as.numeric to return c(lb, ub). (Hint: The second argument of setGeneric is not needed when an existing s3 function uses the .Primitive function.)
 
-    i.  `transform` which takes in a *monotonic* `function` and a `waldCI`, and returns the transformed confidence interval.
+    i. transformCI which takes in a function and a waldCI, and returns the transformed waldCI object. Warn the user that only monotonic functions make sense.
 
 All `level` arguments should have a reasonable default value. `digits` as well.
 
@@ -40,44 +40,44 @@ setClass("waldCI",
          slot = c(
            mean = "numeric",
            sterr = "numeric",
-           lowerCI = "numeric",
-           upperCI = "numeric",
+           lb = "numeric",
+           ub = "numeric",
            level = "numeric"
          ))
 
 ##' @title make a constructor 
 ##' @param mean Numeric
 ##' @param sterr Numeric
-##' @param lowerCI numeric
-##' @param upperCI numeric
+##' @param lb numeric
+##' @param ub numeric
 ##' @param level numeric
 ##' @return new `waldCI` object
 makeWaldCI <- function(mean = NULL, sterr = NULL, 
-                       lowerCI = NULL, upperCI = NULL, level = 0.95){
+                       lb = NULL, ub = NULL, level = 0.95){
   # for just mean and sterr
   if (!is.null(mean) && !is.null(sterr)) {
     # make Wald CI
     alpha <- 1 - level
     z <- qnorm(1 - alpha / 2)
-    lowerCI <- mean - z * sterr
-    upperCI <- mean + z * sterr
-  } else if (!is.null(lowerCI) && !is.null(upperCI)) {
+    lb <- mean - z * sterr
+    ub <- mean + z * sterr
+  } else if (!is.null(lb) && !is.null(ub)) {
     # for CIs and level
     # made Wald CI
-    mean <- (lowerCI + upperCI) / 2
+    mean <- (lb + ub) / 2
     alpha <- 1 - level
     z <- qnorm(1 - alpha / 2)
-    sterr <- (upperCI - mean) / z
+    sterr <- (ub - mean) / z
   } else {
-    stop("Provide either (mean, sterr) or (lowerCI, upperCI) and level.")
+    stop("Provide either (mean, sterr) or (lb, ub) and level.")
   }
   
   # Return the S4 object
   new("waldCI",
       mean = mean,
       sterr = sterr,
-      lowerCI = lowerCI,
-      upperCI = upperCI,
+      lb = lb,
+      ub = ub,
       level = level)
 }
 
@@ -88,24 +88,24 @@ setValidity("waldCI",  function(object) {
   # non-numeric
   if((!is.numeric(object@mean) || is.null(object@mean)) ||
      (!is.numeric(object@sterr) || is.null(object@sterr)) ||
-     (!is.numeric(object@lowerCI) || is.null(object@lowerCI)) ||
-     (!is.numeric(object@upperCI) || is.null(object@upperCI))){
+     (!is.numeric(object@lb) || is.null(object@lb)) ||
+     (!is.numeric(object@ub) || is.null(object@ub))){
     stop("A value is non-numeric, please enter only numeric values.")
   }
   
   # all null
-  if(is.null(object@mean) && is.null(object@sterr) && is.null(object@lowerCI) && is.null(object@upperCI)){
+  if(is.null(object@mean) && is.null(object@sterr) && is.null(object@lb) && is.null(object@ub)){
     stop("Missing all values, please enter values for CIs or Mean and sterr")
   }
   
   # if mean and sterr are null, but so is one of the CIs or level
   if (is.null(object@mean) && is.null(object@sterr) && 
-      (is.null(object@lowerCI) || is.null(object@lowerCI) || is.null(object@level))) {
-    stop("Missing either lowerCI, upperCI, or level")
+      (is.null(object@lb) || is.null(object@lb) || is.null(object@level))) {
+    stop("Missing either lb, ub, or level")
   }
   
   # if CIs are null but so is mean or sterr
-  if (is.null(object@lowerCI) && is.null(object@lowerCI) && (is.null(object@mean) || is.null(object@sterr))) {
+  if (is.null(object@lb) && is.null(object@lb) && (is.null(object@mean) || is.null(object@sterr))) {
     stop("Missing either mean or sterr.")
   }
   
@@ -114,9 +114,25 @@ setValidity("waldCI",  function(object) {
     stop("Level must be inbetween 0 and 1")
   }
   
+  # if error is negative
+  if(object@sterr < 0 && !is.null(object@sterr)){
+    stop("Standard Error must be non-negative.")
+  }
+  
   # lower bound and upper bound error
-  if (object@lowerCI >= object@upperCI)
+  if (object@lb >= object@ub)
       return("Lower bound must be less than upper bound.")
+  
+  # bounds must be finite
+  if (!is.finite(object@lb) || !is.finite(object@ub))
+      return("Bounds must be finite numbers.")
+  
+  # mean is not in between bounds
+  if (!is.null(object@mean)){
+    if(object@mean > object@ub || object@mean < object@lb){
+      return("Mean cannot exceed the current bounds")
+    }
+  }
   
   return(TRUE)
   
@@ -133,33 +149,33 @@ setMethod("show", "waldCI",
             cat(object@level)
             cat("\nMean: ", round(object@mean, digits))
             cat("\nStandard Error: ", round(object@sterr,digits))
-            cat("\nLower Bound: ", round(object@lowerCI, digits))
-            cat("\nUpper Bound: ", round(object@upperCI, digits))
+            cat("\nLower Bound: ", round(object@lb, digits))
+            cat("\nUpper Bound: ", round(object@ub, digits))
             cat("\n\n")
             return(invisible(object))
           })
 
 # Accessors
-# `lb`, `ub`, `mean`, `sterr`. `lb` and `ub` should take in `level`.
+# `lb`, `ub`, `mean`, `sterr`,`level`.
 
 setGeneric("lb", function(object){
-  standardGeneric("lowerCI")
+  standardGeneric("lb")
 })
 ##' @title Return the lower bound of a `waldCI`
 ##' @param object A `waldCI` object
 ##' @return It's lower bound
 setMethod("lb", "waldCI", function(object){
-  return(slot(object, "lowerCI"))
+  return(slot(object, "lb"))
 })
 
 setGeneric("ub", function(object){
-  standardGeneric("upperCI")
+  standardGeneric("ub")
 })
 ##' @title Return the upper bound of a `waldCI`
 ##' @param object A `waldCI` object
 ##' @return It's upper bound
 setMethod("ub", "waldCI", function(object){
-  return(slot(object, "upperCI"))
+  return(slot(object, "ub"))
 })
 
 setGeneric("mean", function(object){
@@ -182,6 +198,16 @@ setMethod("sterr", "waldCI", function(object){
   return(slot(object, "sterr"))
 })
 
+setGeneric("level", function(object){
+  standardGeneric("level")
+})
+##' @title Return the lower bound of a `waldCI`
+##' @param object A `waldCI` object
+##' @return It's lower bound
+setMethod("level", "waldCI", function(object){
+  return(slot(object, "level"))
+})
+
 # setters
 # Setters: `lb`, `ub`, `mean`, `sterr`. Be sure to validate the resulting `waldCI`. 
 
@@ -193,12 +219,13 @@ setGeneric("lb<-",
 ##' @title Set the lower bound of a `waldCI`
 ##' @param object A `waldCI` object
 ##' @param value New lower bound
-##' @return The updated object
+##' @return The updated waldCI
 setMethod("lb<-", "waldCI",
   function(object, value) {
-    object@lowerCI <- value
+    object@lb <- value
     validObject(object) # Re-run validity check
-    return(object)
+    updated <- makeWaldCI(ub = object@ub, lb = value, level = object@level)
+    return(updated)
   }
 )
 
@@ -213,9 +240,10 @@ setGeneric("ub<-",
 ##' @return The updated object
 setMethod("ub<-", "waldCI",
   function(object, value) {
-    object@upperCI <- value
+    object@ub <- value
     validObject(object) # Re-run validity check
-    return(object)
+    updated <- makeWaldCI(ub = value, lb = object@lb, level = object@level)
+    return(updated)
   }
 )
 
@@ -232,7 +260,8 @@ setMethod("mean<-", "waldCI",
   function(object, value) {
     object@mean <- value
     validObject(object) # Re-run validity check
-    return(object)
+    updated <- makeWaldCI(mean = value, sterr = object@sterr, level = object@level)
+    return(updated)
   }
 )
 
@@ -249,21 +278,41 @@ setMethod("sterr<-", "waldCI",
   function(object, value) {
     object@sterr <- value
     validObject(object) # Re-run validity check
-    return(object)
+    updated <- makeWaldCI(mean = object@mean, sterr = value, level = object@level)
+    return(updated)
+  }
+)
+
+setGeneric("level<-",
+           function(object, value) {
+             standardGeneric("level<-")
+           })
+
+##' @title Set the confidence level of a `waldCI`
+##' @param object A `waldCI` object
+##' @param value New level
+##' @return The updated object
+setMethod("level<-", "waldCI",
+  function(object, value) {
+    object@level <- value
+    validObject(object) # Re-run validity check
+    updated <- makeWaldCI(mean = object@mean, sterr = object@sterr, ub = object@ub,
+                          lb = object@lb, level = object@level)
+    return(updated)
   }
 )
 
 # A contains method, returning a logical of whether a value is within a CI.
-setGeneric("containsValue", function(object, value) {
-  standardGeneric("containsValue")
+setGeneric("contains", function(object, value) {
+  standardGeneric("contains")
   })
 
 ##' @title a contains method
 ##' @param object A `waldCI` object
 ##' @param value a value to test whether it is in a CI
 ##' @return logical 
-setMethod("containsValue", "waldCI", function(object, value) {
-  value >= object@lowerCI && value <= object@upperCI
+setMethod("contains", "waldCI", function(object, value) {
+  value >= object@lb && value <= object@ub
 })
 
 # An overlap method, that takes in two waldCI’s, and returns a logical of whether the two confidence intervals overlap.
@@ -276,7 +325,7 @@ setGeneric("overlap", function(object1, object2) {
 ##' @param object2 another `waldCI` object
 ##' @return logical 
 setMethod("overlap", "waldCI", function(object1, object2) {
-  return(!(object1@upperCI < object2@lowerCI || object2@upperCI < object1@lowerCI))
+  return(!(object1@ub < object2@lb || object2@ub < object1@lb))
 })
 
 
@@ -289,7 +338,7 @@ setMethod("overlap", "waldCI", function(object1, object2) {
 ##' @param x A `waldCI` object
 ##' @return c(lb, ub) of a `waldCI` object
 setMethod("as.numeric", "waldCI", function(x){
-  return(c(x@lowerCI, x@upperCI))
+  return(c(x@lb, x@ub))
   })
 
 # transformCI which takes in a function and a waldCI, and returns the transformed waldCI object. Warn the user that only monotonic functions make sense.
@@ -301,19 +350,34 @@ setGeneric("transformCI", function(object, func) {
 ##' @param object A `waldCI` object
 ##' @param func a function
 ##' @return a transformed `waldCI` object
-setMethod("transformCI", "waldCI", function(object, func){
+setMethod("transformCI", c("waldCI", "function"), function(object, func){
   warning("Only monotonic functions are allowed and will make sense.")
-  translowerCI <- func(object@lowerCI)
-  transupperCI <- func(object@upperCI)
+  translb <- func(object@lb)
+  transub <- func(object@ub)
   transmean <- func(object@mean)
-  transsterr <- abs(translowerCI - transupperCI) / qnorm(1 - (1 - object@level))
-  new1 <- new("waldCI",
-      mean = transmean,
-      sterr = transsterr,
-      lowerCI = translowerCI,
-      upperCI = transupperCI,
-      level = level)
-  validObject(new1) # Re-run validity check
+  # need to calculate SE again 
+  alpha <- 1 - object@level
+  z <- qnorm(1 - alpha / 2)
+  transsterr <- (transub - transmean) / z 
+  
+  if(!is.numeric(translb) || !is.numeric(transub) || !is.numeric(transsterr) || !is.numeric(transmean)) {
+    stop("Values are now non-numeric. Doesn't work.")
+  }
+  
+  if(is.null(transsterr) || is.null(translb) || is.null(transub) || is.null(transmean)){
+    stop("Function produced NULL results.")
+  }
+  
+  if(is.na(transsterr) || is.na(translb) || is.na(transub) || is.na(transmean)){
+    stop("Produced NAs.")
+  }
+  
+  if(translb == object@lb && transub == object@ub || transmean == object@mean){
+    stop("Function didn't make sense. Did not change values.")
+  }
+  new1 <- makeWaldCI( mean = transmean, sterr = transsterr, lb = translb,
+      ub = transub, level = object@level)
+  validObject(new1) 
   return(new1)
   })
 
@@ -329,64 +393,55 @@ b\. Use your `waldCI` class to create three objects:
 
 ```{r}
 # construct from CIs and level
-ci1 <- makeWaldCI(lowerCI = 17.2, upperCI = 24.7, level = 0.95)
+ci1 <- makeWaldCI(lb = 17.2, ub = 24.7, level = 0.95)
 
 # Construct from mean and SE
 ci2 <- makeWaldCI(mean = 13, sterr = 2.5, level = 0.99)
 
 # for new CI and level
-ci3 <- makeWaldCI(lowerCI = 27.43, upperCI = 39.22, level = 0.75)
+ci3 <- makeWaldCI(lb = 27.43, ub = 39.22, level = 0.75)
 
 ci1
 ci2
 ci3
+print("Prints out CIs as expected")
 
+cat("\n")
 as.numeric(ci1)
+cat("\n")
 as.numeric(ci2)
+cat("\n")
 as.numeric(ci3)
+print("Prints out numeric as expected.")
 
 lb(ci2)
 ub(ci2)
 mean(ci1)
 sterr(ci3)
 level(ci2)
+print("Prints accessors as expected.")
 
-
-```
-
-c\. Evaluate the following code:
-
-```         
-ci1
-ci2
-ci3
-as.numeric(ci1)
-as.numeric(ci2, .8)
-as.numeric(ci3)
-show(ci1, .9)
-show(ci2, .8)
-show(ci3, .75)
-lb(ci2)
-ub(ci2, .99)
-mean(ci1)
-sterr(ci3)
 lb(ci2) <- 10.5
-lb(ci2, .9) <- 10
+ci2
+print("Changes the lb, recalculates mean and standard error")
 mean(ci3) <- 34
+ci3
+print("Changes the mean, recalculates lb and ub")
+level(ci3) <- .8
+ci3
+print("Changes the level, recalculates the lower and upper bound only")
+
+
 contains(ci1, 17)
-contains(ci2, 11, .9)
 contains(ci3, 44)
 overlap(ci1, ci2)
-overlap(ci1, ci2, .99)
-eci1 <- transform(ci1, exp)
+
+eci1 <- transformCI(ci1, sqrt)
 eci1
-show(eci1, .75)
-mean(transform(ci2, sqrt))
+mean(transformCI(ci2, log))
 ```
+All of these work as intended and shown above.
 
-```{r}
-
-```
 
 c\. Show that your validator does not allow the creation of invalid confidence intervals:
 
@@ -398,6 +453,46 @@ c\. Show that your validator does not allow the creation of invalid confidence i
 
 -   invalid use of the setters
 
+```{r}
+# found try() from ChatGPT
+# negative standard error
+try(ci4 <- makeWaldCI(mean = 10, sterr = -1, level = 0.95))
+try(ci4 <- makeWaldCI(mean = 10, sterr = -10))
+
+# lb > ub
+try(ci4 <- makeWaldCI(lb = 47.43, ub = 39.22, level = 0.75))
+try(ci4 <- makeWaldCI(lb = 0, ub = 0, level = 0.75))
+
+
+# Infinite bounds
+try(ci4 <- makeWaldCI(lowerCI = -Inf, upperCI = 10, level = 0.95))
+try(ci4 <- makeWaldCI(lowerCI = 0, upperCI = Inf, level = 0.95))
+
+# invalid use of the setters
+
+# Attempt to set a negative SE
+try(sterr(ci1) <- -5)
+# Attempt to set lb > ub
+try(lb(ci1) <- 20)
+# Attempt to set an infinite upper bound
+try(ub(ci1) <- Inf)
+# attempt a mean outside of the bounds
+try(mean(ci1) <- 35)
+
+# trying transform
+try(ci4 <- transformCI(ci1, acos))
+try(ci4 <- transformCI(ci1, tanpi))
+try(ci4 <- transformCI(ci1, stderr))
+try(ci4 <- transformCI(ci1, sum))
+try(ci4 <- transformCI(ci1, ncol))
+try(ci4 <- transformCI(ci1, max))
+try(ci4 <- transformCI(ci1, log2))
+try(ci4 <- transformCI(ci1, is.object))
+try(ci4 <- transformCI(ci1, cos))
+try(ci4 <- transformCI(ci1, sin))
+try(ci4 <- transformCI(ci1, abs))
+```
+
 Note that there are a lot of choices to be made here. What are you going to store in the class? How are you going to store them (what object types)? How are you going to enforce the function in `transform` being monotonic?
 
 There is no right answer to those questions. Make the best decision you can, and don’t be afraid to change it if your decision causes unforeseen difficulties.
@@ -405,44 +500,6 @@ There is no right answer to those questions. Make the best decision you can, and
 You may not use any existing R functions or packages that would trivialize this assignment. (E.g. if you found an existing package that does this, or found a function that checks for overlap between two CIs, that is not able to be used.)
 
 Hint: It may be useful to define other functions that I don’t explicitly ask for.
-
-```{r}
-
-```
-
-## Problem #2: **data.table**
-
-Repeat problem set 4, question 2, using data.table.
-
-You can make the same or different decision as you did last time. You can also use or ignore the decisions I made in the solutions. As before, there is no “correct” answer (including those in the problem set 4 solutions).
-
-Use the tidyverse for this problem. In particular, use piping and dplyr as much as you are able. Note: Use of any deprecated functions will result in a point loss.
-
-Use the “ATP Matches” data from 2019 available at https://raw.githubusercontent.com/JeffSackmann/tennis_atp/refs/heads/master/atp_matches_2019.csv. This data tracks all Tennis matches. This data does not have documentation, so you’ll have to explore the data yourself to figure out it’s structure. Use it to answer the following questions. Your answers should show both the output from R that allows you to answer it, as well as a written answer.
-
-a. How many tournaments took place in 2019?
-
-```{r}
-
-```
-
-b. Did any player win more than one tournament? If so, how many players won more than one tournament, and how many tournaments did the most winning player(s) win?
-
-```{r}
-
-```
-
-c. Is there any evidence that winners have more aces than losers? (If you address this with a hypothesis test, do not use base R functionality - continue to remain in the Tidyverse.)
-
-```{r}
-
-```
-
-d. Identify the player(s) with the highest win-rate. (Note that this is NOT asking for the highest number of wins.) Restrict to players with at least 5 matches.
-
-```{r}
-
-```
 
 ## Problem #3: **plotly**
 
@@ -460,9 +517,78 @@ Note: This is, intentionally, a very open-ended question. There is no “right�
 
 Use the NYTimes Covid data (https://raw.githubusercontent.com/nytimes/covid-19-data/refs/heads/master/rolling-averages/us-states.csv). This lists daily Covid new cases. For each of the following, produce a publication-ready plot which addresses the question. Use your plot to support an argument for your question.
 
+Based on last homework, assume that the us-states-covid.csv is already downloaded and in the project. 
+
 a. How many major and minor spikes in cases were there?
 
 ```{r}
+library(tidyverse)
+library(plotly)
+
+covid <- read_csv("us-states-covid.csv")
+
+# a major peak is defined as a peak 2SD+
+# a minor peak is defined as a peak 1SD+
+full_national <- covid %>%
+  # sum all cases from the same day
+  group_by(date) %>%
+  summarize(total_avg_cases = sum(cases_avg, na.rm = TRUE), 
+            total_cases = sum(cases, na.rm = TRUE),
+            .groups = "drop")
+
+# plot(full_national$total_avg_cases)
+# plot(full_national$total_cases)
+
+mean_national <- base::mean(full_national$total_avg_cases, na.rm = TRUE)
+sd_national   <- sd(full_national$total_avg_cases, na.rm = TRUE)
+
+full_national <- full_national %>%
+  mutate(
+    z_score  = (total_avg_cases - mean_national) / sd_national
+  )
+
+# mark as major and minor peak
+full_national <- full_national %>%
+  mutate(peak_type = case_when(
+    (z_score > 0 & z_score < 2) ~ "minor",
+    (z_score > 2) ~ "major",
+    TRUE ~ NA))
+
+table(full_national$peak_type, useNA = "ifany")
+
+# group major and minors together in the same timing
+# Identify peaks and assign interval groups
+peak_number = 1
+full_national <- full_national %>%
+  # create a change marker for each peak change grouping
+  mutate(peak_group = NA,
+         peak_change = (peak_type != lag(peak_type))) #%>%
+  # cumulative sum of changes gives a unique group ID
+  # mutate(peak_group = ifelse(!is.na(peak_type_char), cumsum(peak_change), NA_integer_))
+table(full_national$peak_type)
+summary(full_national$peak_change)
+
+# plot using plotly
+plot1 <- full_national %>%
+  plot_ly(x = ~date, y = ~total_avg_cases, type = 'scatter', mode = 'lines',
+          name = 'Sum of Total Avg. Cases per day', hoverinfo = 'x+y') %>%
+  layout(title = 'Total US Avg. Cases of COVID per day with Peaks Marked',
+         xaxis = list(title = 'Date'),
+         yaxis = list(title = 'Sum of Total Avg. Cases for Date'))
+
+# add markers and annotations for peaks
+
+
+# add color different for major vs minor 
+# label each interval of major or minor only once
+plot1 <- plot1 %>%
+    add_trace(data = peak_rows, x = ~date, y = ~total_avg_cases,
+    type = 'scatter', mode = 'markers+text',
+    text = ~peak_type, textposition = 'top center',
+    marker = list(size = 10, color = ~ifelse(peak_type == "major", "red", "orange")),
+    name = 'Peaks')
+
+plot1
 
 ```
 
