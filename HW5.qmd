@@ -774,7 +774,7 @@ plot4
 
 ```
 
-** Based on the plot, Washington and Illinois are definitely at the top, but it is hard to tell from the other states, I will remove them to see what other states show up**
+**Based on the plot, Washington and Illinois are definitely at the top, but it is hard to tell from the other states, I will remove them to see what other states show up**
 
 ```{r}
 # filtering out washington and Illinois
@@ -809,7 +809,7 @@ plot5
 
 ```
 
-** After filtering, I see NY, LA, NJ, DC, CO, and ME with the most significant first rates of covid**
+**After filtering, I see NY, LA, NJ, DC, CO, and ME with the most significant first rates of covid**
 
 ```{r}
 # now I will plot those states
