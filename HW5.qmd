@@ -541,7 +541,6 @@ full_national <- covid %>%
 
 mean_national <- base::mean(full_national$total_avg_cases, na.rm = TRUE)
 sd_national   <- sd(full_national$total_avg_cases, na.rm = TRUE)
-
 full_national <- full_national %>%
   mutate(
     z_score  = (total_avg_cases - mean_national) / sd_national
@@ -558,50 +557,285 @@ table(full_national$peak_type, useNA = "ifany")
 
 # group major and minors together in the same timing
 # Identify peaks and assign interval groups
-peak_number = 1
+
 full_national <- full_national %>%
   # create a change marker for each peak change grouping
   mutate(peak_group = NA,
-         peak_change = (peak_type != lag(peak_type))) #%>%
-  # cumulative sum of changes gives a unique group ID
-  # mutate(peak_group = ifelse(!is.na(peak_type_char), cumsum(peak_change), NA_integer_))
-table(full_national$peak_type)
-summary(full_national$peak_change)
+         peak_change = ifelse((!is.na(peak_type) & is.na(lag(peak_type))), 1, 0))
+
+#table(full_national$peak_type)
+#table(full_national$peak_change)
+#summary(full_national$peak_change)
+
+full_national <- full_national %>%
+  mutate(peak_group = ifelse((peak_change == 1), cumsum(peak_change), NA)) %>%
+  # now count all the majors or minors after that in the same group
+  group_by(gr = cumsum(is.na(peak_type))) %>%  # group by stretches between NAs
+  mutate(peak_group = ifelse(!is.na(peak_type), first(peak_group[!is.na(peak_group)]), NA_integer_)) %>%
+  ungroup()
+table(full_national$peak_group)
+
+# replace all minor peaks in group 5 with major because its the same peak
+full_national <- full_national %>%
+  mutate(peak_type = ifelse(peak_group == 4, "major", peak_type))
+
 
 # plot using plotly
 plot1 <- full_national %>%
   plot_ly(x = ~date, y = ~total_avg_cases, type = 'scatter', mode = 'lines',
-          name = 'Sum of Total Avg. Cases per day', hoverinfo = 'x+y') %>%
+          name = 'Total Avg. Cases', hoverinfo = 'x+y') %>%
   layout(title = 'Total US Avg. Cases of COVID per day with Peaks Marked',
          xaxis = list(title = 'Date'),
          yaxis = list(title = 'Sum of Total Avg. Cases for Date'))
 
-# add markers and annotations for peaks
+# Filter only rows that are part of a peak
+# separate major and minor peaks
+major_peak <- full_national %>%
+  filter(!is.na(peak_group) & peak_type == "major")
+minor_peak <- full_national %>%
+  filter(!is.na(peak_group) & peak_type == "minor")
 
-
-# add color different for major vs minor 
-# label each interval of major or minor only once
+# trace the peaks
 plot1 <- plot1 %>%
-    add_trace(data = peak_rows, x = ~date, y = ~total_avg_cases,
-    type = 'scatter', mode = 'markers+text',
-    text = ~peak_type, textposition = 'top center',
-    marker = list(size = 10, color = ~ifelse(peak_type == "major", "red", "orange")),
-    name = 'Peaks')
+  add_trace(data = major_peak, x = ~date, y = ~total_avg_cases,
+      type = 'scatter', mode = 'lines', name = ~peak_type)
+# for each minor peak
+for(g in 1:6){
+  minor_group <- minor_peak %>%
+    filter(peak_group == g)
+  plot1 <- plot1 %>% 
+    add_trace(data = minor_group, x = ~date, y = ~total_avg_cases,
+      type = 'scatter', mode = 'lines', name = "minor") 
+}
 
 plot1
 
 ```
 
+**Based on my results, there is one major peak which was at least 2 standard deviations from the mean and there were five minor peaks which were around 1 standard deviation from the mean. **
+
 b. For the states with the highest and lowest overall rates per population, what differences do you see in their trajectories over time?
 
 ```{r}
+# compute each state's overall average case rate per 100k
+state_summary <- covid %>%
+  group_by(state) %>%
+  summarise(avg_rate_per_100k = base::mean(cases_avg_per_100k, na.rm = TRUE))
+
+# identify states with highest and lowest average rates
+top_states <- state_summary %>% 
+  slice_max(avg_rate_per_100k, n = 5) %>% 
+  select(state)
+bottom_states <- state_summary %>% 
+  slice_min(avg_rate_per_100k, n = 5) %>% 
+  select(state)
+
+top_states
+bottom_states
+
+# filter to only states of interest
+top_data <- covid %>%
+  filter(state %in% top_states$state)
+bottom_data <- covid %>%
+  filter(state %in% bottom_states$state) 
+
+# plot using plotly
+# plot first state
+state_plot <- covid %>%
+  filter(!(state %in% top_states$state)) %>%
+  filter(!(state %in% bottom_states$state)) %>%
+  filter(state == unique(covid$state)[1])
+plot2 <- state_plot %>%
+  plot_ly(x = ~date, y = ~cases_avg_per_100k, type = 'scatter', mode = 'lines',
+          name = ~state, hoverinfo = 'x+y',
+          line = list(color = 'lightgray', width = 2)) %>%
+  layout(title = 'Cases Rates per State Over Time',
+         xaxis = list(title = 'Date'),
+         yaxis = list(title = 'Cases Rate Per 100k'))
+
+# plot all the rest of the  states with rates
+for(a in 2:length(unique(covid$state))){
+  # pull each state 
+  state_plot <- covid %>%
+    filter(!(state %in% top_states$state)) %>%
+    filter(!(state %in% bottom_states$state)) %>%
+    filter(state == unique(covid$state)[a])
+  # plot that state
+  plot2 <- plot2 %>%
+    add_trace(data = state_plot, x = ~date, y = ~cases_avg_per_100k, type = 'scatter', 
+              mode = 'lines', hoverinfo = 'x+y',
+              line = list(color = 'lightgray', width = 2))
+}
+
+# now overlay top states in red
+for(a in 1:length(unique(top_data$state))){
+  # pull each state 
+  state_plot <- top_data %>%
+    filter(state == unique(top_data$state)[a])
+  # plot that state
+  plot2 <- plot2 %>%
+    add_trace(data = state_plot, x = ~date, y = ~cases_avg_per_100k, type = 'scatter', 
+              mode = 'lines', name = ~state, text = ~state, hoverinfo = 'text+x+y',
+              line = list(color = 'red', width = 2))
+}
+
+# now overlay bottom states in blue
+for(a in 1:length(unique(bottom_data$state))){
+  # pull each state 
+  state_plot <- bottom_data %>%
+    filter(state == unique(bottom_data$state)[a])
+  # plot that state
+  plot2 <- plot2 %>%
+    add_trace(data = state_plot, x = ~date, y = ~cases_avg_per_100k, type = 'scatter', 
+              mode = 'lines', name = ~state, text = ~state, hoverinfo = 'text+x+y',
+              line = list(color = 'blue', width = 2))
+}
+
+plot2
 
 ```
+
+**This plot clearly shows that states with high rates peaked early and tended to have larger peaks prior to 2023, but it hrd to see the differences towards the end trajectory so I will plot those too to see**
+
+```{r}
+state_plot2023 <- top_data %>%
+  filter(date > "2022-3-01") %>%
+  filter(state == unique(top_data$state)[1])
+plot3 <- state_plot2023 %>%
+  plot_ly(x = ~date, y = ~cases_avg_per_100k, type = 'scatter', mode = 'lines',
+          name = ~state, text = ~state, hoverinfo = 'text+x+y',
+          line = list(color = 'red', width = 2)) %>%
+  layout(title = 'Cases Rates for High and Low Rate States from 03/22 to 03/23',
+         xaxis = list(title = 'Date'),
+         yaxis = list(title = 'Cases Rate Per 100k'))
+
+# now overlay top states in red
+for(b in 2:5){
+  # pull each state 
+  state_plot2023 <- top_data %>%
+    filter(date > "2022-3-01") %>%
+    filter(state == unique(top_data$state)[b])
+  # plot that state
+  plot3 <- plot3 %>%
+    add_trace(data = state_plot2023, x = ~date, y = ~cases_avg_per_100k,
+              type = 'scatter', mode = 'lines', name = ~state, text = ~state,
+              hoverinfo = 'text+x+y',
+              line = list(color = 'red', width = 2))
+}
+
+# now overlay bottom states in blue
+for(a in 1:5){
+  # pull each state 
+  state_plot2023 <- bottom_data %>%
+    filter(date > "2022-3-01") %>%
+    filter(state == unique(bottom_data$state)[a])
+  # plot that state
+  plot3 <- plot3 %>%
+    add_trace(data = state_plot2023, x = ~date, y = ~cases_avg_per_100k, 
+              type = 'scatter', mode = 'lines', name = ~state, text = ~state,
+              hoverinfo = 'text+x+y',
+              line = list(color = 'blue', width = 2))
+}
+
+plot3
+```
+
+**In the last year of data, you can see that the rates of covid actually fluctuate more for more high rate states than low rate states, but you can see overall the trend is the same for both in end trajectories.**
 
 c. Identify, to the best of your ability without a formal test, the first five states to experience Covid in a substantial way.
 
 ```{r}
+# a substantial way is definitely cases per population or case_avg_per_100k
+# zoom up on my plot for the first year of covid 
+state_rates <- covid %>%
+  filter(date < "2020-03-20" & date > "2020-03-05") %>%
+  filter(state == unique(covid$state)[1])
+
+plot4 <- state_rates %>%
+  plot_ly(x = ~date, y = ~cases_avg_per_100k, type = 'scatter', mode = 'lines',
+          name = ~state, text = ~state, hoverinfo = 'text+x+y') %>%
+  layout(title = 'Cases Rates for the Start of COVID',
+         xaxis = list(title = 'Date'),
+         yaxis = list(title = 'Cases Rate Per 100k'))
+
+# now for the rest of the states overlay
+for(a in 2:length(unique(covid$state))){
+  # pull each state 
+  state_rates<- covid %>%
+    filter(date < "2020-03-20" & date > "2020-03-05") %>%
+    filter(state == unique(covid$state)[a])
+  # plot that state
+  plot4 <- plot4 %>%
+    add_trace(data = state_rates, x = ~date, y = ~cases_avg_per_100k, type = 'scatter', 
+              mode = 'lines', hoverinfo = 'x+y')
+}
+
+plot4
 
 ```
 
+** Based on the plot, Washington and Illinois are definitely at the top, but it is hard to tell from the other states, I will remove them to see what other states show up**
 
+```{r}
+# filtering out washington and Illinois
+covid_noILorWA <- covid %>%
+    filter(!(state == "Washington")) %>%
+   filter(!(state == "Illinois"))
+
+state_rates <- covid_noILorWA %>%
+  filter(date < "2020-03-20" & date > "2020-03-05") %>%
+  filter(state == unique(covid_noILorWA$state)[1])
+
+plot5 <- state_rates %>%
+  plot_ly(x = ~date, y = ~cases_avg_per_100k, type = 'scatter', mode = 'lines',
+          name = ~state, text = ~state, hoverinfo = 'text+x+y') %>%
+  layout(title = 'Cases Rates for the Start of COVID (no WA or IL)',
+         xaxis = list(title = 'Date'),
+         yaxis = list(title = 'Cases Rate Per 100k'))
+
+# now for the rest of the states overlay
+for(a in 2:47){
+  # pull each state 
+  state_rates<- covid_noILorWA %>%
+    filter(date < "2020-03-20" & date > "2020-03-05") %>%
+    filter(state == unique(covid_noILorWA$state)[a])
+  # plot that state
+  plot5 <- plot5 %>%
+    add_trace(data = state_rates, x = ~date, y = ~cases_avg_per_100k, type = 'scatter', 
+              mode = 'lines', text = ~state, hoverinfo = 'text+x+y')
+}
+
+plot5
+
+```
+
+** After filtering, I see NY, LA, NJ, DC, CO, and ME with the most significant first rates of covid**
+
+```{r}
+# now I will plot those states
+state_list <- c("Washington", "Illinois", "New York", "Louisiana", "District of Columbia")
+state_rates <- covid %>%
+  filter(date < "2020-03-20" & date > "2020-03-05") %>%
+  filter(state == "Washington") 
+
+plot6 <- state_rates %>%
+  plot_ly(x = ~date, y = ~cases_avg_per_100k, type = 'scatter', mode = 'lines',
+          name = ~state, text = ~state, hoverinfo = 'text+x+y') %>%
+  layout(title = 'Early COVID Cases Rates for First 5 States',
+         xaxis = list(title = 'Date'),
+         yaxis = list(title = 'Cases Rate Per 100k'))
+
+# now for the rest of the states overlay
+for(a in 2:length(state_list)){
+  # pull each state 
+  state_rates <- covid %>%
+    filter(date < "2020-03-20" & date > "2020-03-05") %>%
+    filter(state == state_list[a]) 
+  # plot that state
+  plot6 <- plot6 %>%
+    add_trace(data = state_rates, x = ~date, y = ~cases_avg_per_100k, type = 'scatter', 
+              mode = 'lines', text = ~state, hoverinfo = 'text+x+y')
+}
+
+plot6
+```
